@@ -34,6 +34,10 @@ struct _LiveCaptionsWindow {
     GtkToggleButton  *mic_button;
     GtkLabel         *label;
 
+    // New persistent transcript widgets
+    GtkScrolledWindow *transcript_scroll;
+    GtkTextView       *transcript_view;
+
     GtkCssProvider *css_provider;
 
     bool slow_warning_shown;

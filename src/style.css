@@ -9,6 +9,11 @@
     background-color: #00000000;
 }
 
+/* Ensure header button icons render white */
+.header-icon {
+    color: white;
+}
+
 .warning-icon {
     animation-name: flashing;
     animation-duration: 1s;

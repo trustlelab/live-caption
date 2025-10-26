@@ -36,21 +36,19 @@ static void livecaptions_window_class_init (LiveCaptionsWindowClass *klass) {
     gtk_widget_class_bind_template_child(widget_class, LiveCaptionsWindow, side_box_tiny);
     gtk_widget_class_bind_template_child(widget_class, LiveCaptionsWindow, mic_button);
     gtk_widget_class_bind_template_child(widget_class, LiveCaptionsWindow, label);
+    gtk_widget_class_bind_template_child(widget_class, LiveCaptionsWindow, transcript_scroll);
+    gtk_widget_class_bind_template_child(widget_class, LiveCaptionsWindow, transcript_view);
     gtk_widget_class_bind_template_child(widget_class, LiveCaptionsWindow, too_slow_warning);
     gtk_widget_class_bind_template_child(widget_class, LiveCaptionsWindow, slow_warning);
     gtk_widget_class_bind_template_child(widget_class, LiveCaptionsWindow, slowest_warning);
 }
 
-static void change_button_layout(LiveCaptionsWindow *self, gint text_height){
-    int button_height = 29;
-
-    if(text_height > (2 * button_height)) {
-        gtk_widget_set_visible(GTK_WIDGET(self->side_box), true);
+static void change_button_layout(LiveCaptionsWindow *self, G_GNUC_UNUSED gint text_height){
+    // Always show the primary header controls on the left
+    gtk_widget_set_visible(GTK_WIDGET(self->side_box), true);
+    // Hide the tiny-alt layout (unused in the new header)
+    if(self->side_box_tiny)
         gtk_widget_set_visible(GTK_WIDGET(self->side_box_tiny), false);
-    } else {
-        gtk_widget_set_visible(GTK_WIDGET(self->side_box_tiny), true);
-        gtk_widget_set_visible(GTK_WIDGET(self->side_box), false);
-    }
 }
 
 const char LINE_WIDTH_TEXT_TEMPLATE[] = "This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.";
@@ -207,6 +205,18 @@ static void livecaptions_window_init(LiveCaptionsWindow *self) {
 
     update_font(self);
     update_window_transparency(self);
+
+    // Configure transcript view defaults
+    if(self->transcript_view) {
+        GtkTextBuffer *buf = gtk_text_view_get_buffer(self->transcript_view);
+        if(buf) {
+            // Do not clear buffer on startup; keep session text persistent
+        }
+        gtk_text_view_set_wrap_mode(self->transcript_view, GTK_WRAP_WORD_CHAR);
+        gtk_text_view_set_editable(self->transcript_view, FALSE);
+        gtk_text_view_set_cursor_visible(self->transcript_view, FALSE);
+        gtk_widget_set_visible(GTK_WIDGET(self->transcript_view), TRUE);
+    }
 
     self->slow_warning_shown = false;
     self->was_errored = false;
