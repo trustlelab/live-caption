@@ -48,3 +48,12 @@ audio_thread_pw create_audio_thread_pw(bool microphone, asr_thread asr);
 void *run_audio_thread_pw(void *thread);
 void free_audio_thread_pw(audio_thread_pw thread);
 #endif
+
+#ifdef __APPLE__
+struct audio_thread_ca_i;
+typedef struct audio_thread_ca_i * audio_thread_ca;
+
+audio_thread_ca create_audio_thread_ca(bool microphone, asr_thread asr);
+void *run_audio_thread_ca(void *thread);
+void free_audio_thread_ca(audio_thread_ca thread);
+#endif

@@ -21,21 +21,36 @@
 #include "audiocap.h"
 #include "audiocap-internal.h"
 
+#ifndef __APPLE__
 #include <pulse/pulseaudio.h>
+#endif
 #include <april_api.h>
 
+#ifdef __APPLE__
+#define USE_COREAUDIO 1
+#define USE_PULSEAUDIO 0
+#else
 #define USE_PULSEAUDIO 1
+#define USE_COREAUDIO 0
+#endif
 
 struct audio_thread_i {
 #ifdef LIVE_CAPTIONS_PIPEWIRE
     GThread * pw_thread_id;
 #endif
+#ifdef __APPLE__
+    GThread * ca_thread_id;
+#endif
 
     bool using_pulse;
+    bool using_coreaudio;
     union {
         audio_thread_pa pulse;
 #ifdef LIVE_CAPTIONS_PIPEWIRE
         audio_thread_pw pipewire;
+#endif
+#ifdef __APPLE__
+        audio_thread_ca coreaudio;
 #endif
     } thread;
 };
@@ -51,13 +66,22 @@ audio_thread create_audio_thread(bool microphone, asr_thread asr){
     audio_thread data = calloc(1, sizeof(struct audio_thread_i));
     
     data->using_pulse = USE_PULSEAUDIO;
+    data->using_coreaudio = USE_COREAUDIO;
 
-    if(data->using_pulse) {
+    if(data->using_coreaudio) {
+#ifdef __APPLE__
+        data->thread.coreaudio = create_audio_thread_ca(microphone, asr);
+        data->ca_thread_id = g_thread_new("lcap-audiothread-ca", run_audio_thread_ca, data->thread.coreaudio);
+#endif
+    }
+    else if(data->using_pulse) {
+#ifndef __APPLE__
         data->thread.pulse = create_audio_thread_pa(microphone, asr);
         run_audio_thread_pa(data->thread.pulse);
+#endif
     }
 #ifdef LIVE_CAPTIONS_PIPEWIRE
-      else {
+    else {
         data->thread.pipewire = create_audio_thread_pw(microphone, asr);
         data->pw_thread_id = g_thread_new("lcap-audiothread", run_audio_thread_pw, data->thread.pipewire);
     }
@@ -67,12 +91,22 @@ audio_thread create_audio_thread(bool microphone, asr_thread asr){
 }
 
 void free_audio_thread(audio_thread thread) {
-    if(thread->using_pulse){
+    if(thread->using_coreaudio) {
+#ifdef __APPLE__
+        free_audio_thread_ca(thread->thread.coreaudio);
+        g_thread_join(thread->ca_thread_id);
+        g_thread_unref(thread->ca_thread_id);
+        free(thread->thread.coreaudio);
+#endif
+    }
+    else if(thread->using_pulse){
+#ifndef __APPLE__
         free_audio_thread_pa(thread->thread.pulse);
         free(thread->thread.pulse);
+#endif
     }
 #ifdef LIVE_CAPTIONS_PIPEWIRE
-      else {
+    else {
         free_audio_thread_pw(thread->thread.pipewire);
         g_thread_join(thread->pw_thread_id);
         g_thread_unref(thread->pw_thread_id); // ?
