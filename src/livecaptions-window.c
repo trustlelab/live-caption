@@ -211,6 +211,12 @@ static void livecaptions_window_init(LiveCaptionsWindow *self) {
         GtkTextBuffer *buf = gtk_text_view_get_buffer(self->transcript_view);
         if(buf) {
             // Do not clear buffer on startup; keep session text persistent
+            // Create a mark to indicate where the live (replaceable) tail starts
+            GtkTextIter end_iter;
+            gtk_text_buffer_get_end_iter(buf, &end_iter);
+            if(self->transcript_live_start)
+                gtk_text_buffer_delete_mark(buf, self->transcript_live_start);
+            self->transcript_live_start = gtk_text_buffer_create_mark(buf, "transcript_live_start", &end_iter, TRUE);
         }
         gtk_text_view_set_wrap_mode(self->transcript_view, GTK_WRAP_WORD_CHAR);
         gtk_text_view_set_editable(self->transcript_view, FALSE);

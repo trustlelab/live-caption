@@ -69,6 +69,41 @@ struct asr_thread_i {
 
 
 static gboolean main_thread_update_label(void *userdata);
+typedef struct {
+    asr_thread data;
+    char *text;        // newly built streaming text for live tail
+    gboolean is_final; // whether to lock the live mark at end
+} TranscriptUpdate;
+
+static gboolean apply_transcript_update(void *userdata) {
+    TranscriptUpdate *u = (TranscriptUpdate*)userdata;
+    asr_thread data = u->data;
+    if(data && data->window && data->window->transcript_view && data->window->transcript_live_start) {
+        GtkTextBuffer *buf = gtk_text_view_get_buffer(data->window->transcript_view);
+        if(buf) {
+            GtkTextIter start_iter, end_iter;
+            gtk_text_buffer_get_iter_at_mark(buf, &start_iter, data->window->transcript_live_start);
+            gtk_text_buffer_get_end_iter(buf, &end_iter);
+            gtk_text_buffer_delete(buf, &start_iter, &end_iter);
+            gtk_text_buffer_get_end_iter(buf, &end_iter);
+            gtk_text_buffer_insert(buf, &end_iter, u->text ? u->text : "", -1);
+
+            // Keep view scrolled to end
+            GtkTextMark *tmp = gtk_text_buffer_create_mark(buf, NULL, &end_iter, FALSE);
+            gtk_text_view_scroll_mark_onscreen(data->window->transcript_view, tmp);
+            gtk_text_buffer_delete_mark(buf, tmp);
+
+            if(u->is_final) {
+                // Lock-in the current live region by moving the mark to the end
+                gtk_text_buffer_get_end_iter(buf, &end_iter);
+                gtk_text_buffer_move_mark(buf, data->window->transcript_live_start, &end_iter);
+            }
+        }
+    }
+    if(u->text) g_free(u->text);
+    g_free(u);
+    return G_SOURCE_REMOVE;
+}
 
 static void *run_asr_thread(void *userdata){
     asr_thread data = (asr_thread)userdata;
@@ -105,15 +140,7 @@ static gboolean main_thread_update_label(void *userdata){
 
     g_mutex_lock(&data->text_mutex);
     line_generator_set_text(&data->line, data->window->label);
-
-    // Also mirror the current visible text into the transcript view if present
-    if(data->window->transcript_view) {
-        GtkTextBuffer *buf = gtk_text_view_get_buffer(data->window->transcript_view);
-        if(buf) {
-            // Optional: avoid duplicating text every partial; we append only on final in handler
-            // Here we can update a "live line" at the end (skipped to keep logic simple)
-        }
-    }
+    // Transcript streaming is handled directly in the result handler to avoid duplication
     
     if(data->text_stream_active) {
         LiveCaptionsApplication *application = LIVECAPTIONS_APPLICATION(gtk_window_get_application(GTK_WINDOW(data->window)));
@@ -123,6 +150,50 @@ static gboolean main_thread_update_label(void *userdata){
     g_mutex_unlock(&data->text_mutex);
 
     return G_SOURCE_REMOVE;
+}
+
+static void build_text_from_tokens(asr_thread data, GString *acc, size_t count, const AprilToken* tokens) {
+    gboolean text_uppercase = g_settings_get_boolean(data->window->settings, "text-uppercase");
+    gboolean use_lowercase = !text_uppercase;
+
+    bool should_capitalize[count > 0 ? count : 1];
+    struct token_capitalizer tcap;
+    token_capitalizer_init(&tcap);
+    for(size_t i = 0; i < count; i++) {
+        const char *next_tok = (i + 1) < count ? tokens[i+1].token : NULL;
+        int next_flags = (i + 1) < count ? tokens[i+1].flags : 0;
+        should_capitalize[i] = token_capitalizer_next(&tcap, tokens[i].token, tokens[i].flags, next_tok, next_flags);
+    }
+    char scratch[256];
+    for(size_t i = 0; i < count; i++) {
+        const char *src = tokens[i].token;
+        if(!src) continue;
+        if(use_lowercase) {
+            const char *p = src;
+            char *out = scratch;
+            bool cap = should_capitalize[i];
+            while(*p) {
+                gunichar c = g_utf8_get_char_validated(p, -1);
+                if(c == (gunichar)-1 || c == (gunichar)-2) break;
+                c = g_unichar_tolower(c);
+                if(cap) {
+                    gunichar uc = g_unichar_toupper(c);
+                    if(uc != c) {
+                        c = uc; cap = false;
+                    }
+                }
+                out += g_unichar_to_utf8(c, out);
+                if((out + 8) >= (scratch + sizeof(scratch))) break;
+                p = g_utf8_next_char(p);
+            }
+            *out = '\0';
+            g_string_append(acc, scratch);
+        } else {
+            g_string_append(acc, src);
+        }
+    }
+    // Replace any newlines with space (safety)
+    for(guint i = 0; i < acc->len; ++i) if(acc->str[i] == '\n') acc->str[i] = ' ';
 }
 
 static void april_result_handler(void* userdata, AprilResultType result, size_t count, const AprilToken* tokens) {
@@ -146,78 +217,23 @@ static void april_result_handler(void* userdata, AprilResultType result, size_t 
             }
 
             line_generator_update(&data->line, count, tokens);
+
+            // Build current streaming text and schedule UI update on main thread
+            if(data->window && data->window->transcript_view && data->window->transcript_live_start) {
+                GString *acc = g_string_new(NULL);
+                build_text_from_tokens(data, acc, count, tokens);
+                TranscriptUpdate *upd = g_new0(TranscriptUpdate, 1);
+                upd->data = data;
+                upd->text = g_strdup(acc->str);
+                upd->is_final = (result == APRIL_RESULT_RECOGNITION_FINAL);
+                g_idle_add(apply_transcript_update, upd);
+                g_string_free(acc, TRUE);
+            }
+
             if(result == APRIL_RESULT_RECOGNITION_FINAL) {
                 line_generator_finalize(&data->line);
                 commit_tokens_to_current_history(tokens, count);
-
-                // Append the finalized tokens to the transcript TextView for persistence
-                if(data->window && data->window->transcript_view) {
-                    GtkTextBuffer *buf = gtk_text_view_get_buffer(data->window->transcript_view);
-                    if(buf) {
-                        // Build text mirroring the same casing rules as the on-screen label
-                        gboolean text_uppercase = g_settings_get_boolean(data->window->settings, "text-uppercase");
-                        gboolean use_lowercase = !text_uppercase;
-
-                        // Determine capitalization per token similar to line_generator_update
-                        bool should_capitalize[count > 0 ? count : 1];
-                        struct token_capitalizer tcap;
-                        token_capitalizer_init(&tcap);
-
-                        for(size_t i = 0; i < count; i++) {
-                            const char *next_tok = (i + 1) < count ? tokens[i+1].token : NULL;
-                            int next_flags = (i + 1) < count ? tokens[i+1].flags : 0;
-                            should_capitalize[i] = token_capitalizer_next(&tcap, tokens[i].token, tokens[i].flags, next_tok, next_flags);
-                        }
-
-                        GString *acc = g_string_new(NULL);
-                        char scratch[128];
-                        for(size_t i = 0; i < count; i++) {
-                            const char *src = tokens[i].token;
-                            if(!src) continue;
-
-                            if(use_lowercase) {
-                                // Lowercase entire token and optionally uppercase first meaningful char
-                                const char *p = src;
-                                char *out = scratch;
-                                bool cap = should_capitalize[i];
-                                while(*p) {
-                                    gunichar c = g_utf8_get_char_validated(p, -1);
-                                    if(c == (gunichar)-1 || c == (gunichar)-2) break;
-                                    c = g_unichar_tolower(c);
-                                    if(cap) {
-                                        gunichar uc = g_unichar_toupper(c);
-                                        if(uc != c) {
-                                            c = uc;
-                                            cap = false;
-                                        }
-                                    }
-                                    out += g_unichar_to_utf8(c, out);
-                                    if((out + 8) >= (scratch + sizeof(scratch))) break;
-                                    p = g_utf8_next_char(p);
-                                }
-                                *out = '\0';
-                                g_string_append(acc, scratch);
-                            } else {
-                                // Keep original token as-is when uppercase mode is enabled
-                                g_string_append(acc, src);
-                            }
-                        }
-
-                        // Insert a newline at the end of finalized phrase
-                        g_string_append_c(acc, '\n');
-
-                        GtkTextIter end_iter;
-                        gtk_text_buffer_get_end_iter(buf, &end_iter);
-                        gtk_text_buffer_insert(buf, &end_iter, acc->str, -1);
-
-                        // Auto-scroll to the end
-                        GtkTextMark *mark = gtk_text_buffer_create_mark(buf, NULL, &end_iter, FALSE);
-                        gtk_text_view_scroll_mark_onscreen(data->window->transcript_view, mark);
-                        gtk_text_buffer_delete_mark(buf, mark);
-
-                        g_string_free(acc, TRUE);
-                    }
-                }
+                // For UI locking of live region, handled in apply_transcript_update when is_final
             }
 
             g_mutex_unlock(&data->text_mutex);
@@ -237,15 +253,7 @@ static void april_result_handler(void* userdata, AprilResultType result, size_t 
             line_generator_break(&data->line);
             save_silence_to_history();
 
-            // Separate segments in the persistent transcript with an extra newline
-            if(data->window && data->window->transcript_view) {
-                GtkTextBuffer *buf = gtk_text_view_get_buffer(data->window->transcript_view);
-                if(buf) {
-                    GtkTextIter end_iter;
-                    gtk_text_buffer_get_end_iter(buf, &end_iter);
-                    gtk_text_buffer_insert(buf, &end_iter, "\n", -1);
-                }
-            }
+            // Do not add line breaks on silence to keep text continuous
 
             g_mutex_unlock(&data->text_mutex);
             g_idle_add(main_thread_update_label, data);

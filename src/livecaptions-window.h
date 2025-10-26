@@ -37,6 +37,7 @@ struct _LiveCaptionsWindow {
     // New persistent transcript widgets
     GtkScrolledWindow *transcript_scroll;
     GtkTextView       *transcript_view;
+    GtkTextMark       *transcript_live_start; // mark where the live, replaceable tail begins
 
     GtkCssProvider *css_provider;
 

@@ -362,3 +362,35 @@ const char *line_generator_get_plaintext(struct line_generator *lg) {
 
     return &lg->plaintext[0];
 }
+
+const char *line_generator_get_active_plaintext(struct line_generator *lg) {
+    bool use_fade = g_settings_get_boolean(settings, "fade-text");
+
+    char *head = &lg->plaintext[0];
+    *head = '\0';
+
+    // Only the current active line should be included in live streaming
+    struct line *curr = &lg->lines[REL_LINE_IDX(lg->current_line, 0)];
+
+    if(!use_fade) {
+        head += sprintf(head, "%s", curr->text);
+    } else {
+        // Remove the <span...> markup from the current line
+        bool inside_markup = false;
+        for(int j=0; j<curr->head; j++) {
+            if(curr->text[j] == '<') {
+                inside_markup = true;
+                continue;
+            } else if(curr->text[j] == '>') {
+                inside_markup = false;
+                continue;
+            } else if(inside_markup) {
+                continue;
+            }
+
+            head += sprintf(head, "%c", curr->text[j]);
+        }
+    }
+
+    return &lg->plaintext[0];
+}

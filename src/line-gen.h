@@ -78,3 +78,5 @@ void line_generator_break(struct line_generator *lg);
 void line_generator_set_text(struct line_generator *lg, GtkLabel *lbl);
 void line_generator_set_language(struct line_generator *lg, const char* language);
 const char *line_generator_get_plaintext(struct line_generator *lg);
+// Returns only the current active line as plaintext (no markup), used for live streaming
+const char *line_generator_get_active_plaintext(struct line_generator *lg);
