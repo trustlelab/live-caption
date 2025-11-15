@@ -18,9 +18,42 @@
 
 #pragma once
 
+#include <string.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
+
 #define SWEAR_REPLACEMENT " [__]"
 
 #define LIVECAPTIONS_VERSION "0.4.1"
 
 #define MINIMUM_BENCHMARK_RESULT (0.6)
-#define GET_MODEL_PATH() (getenv("APRIL_MODEL_PATH") == NULL) ? "/app/LiveCaptions/models/aprilv0_en-us.april" : getenv("APRIL_MODEL_PATH")
+
+// Helper function to get the model path
+static inline const char* get_model_path_impl(void) {
+    // First check environment variable
+    const char *env_path = getenv("APRIL_MODEL_PATH");
+    if (env_path != NULL) return env_path;
+    
+    // Try macOS bundle path
+    static char bundle_path[1024] = {0};
+    if (bundle_path[0] == '\0') {
+        // Get the executable path
+        uint32_t size = sizeof(bundle_path);
+        if (_NSGetExecutablePath(bundle_path, &size) == 0) {
+            // Remove "/Contents/MacOS/livecaptions" and append "/Contents/Resources/april-english-dev-01110_en.april"
+            char *contents = strstr(bundle_path, "/Contents/MacOS");
+            if (contents != NULL) {
+                strcpy(contents, "/Contents/Resources/april-english-dev-01110_en.april");
+                return bundle_path;
+            }
+        }
+    } else {
+        return bundle_path;
+    }
+    
+    // Fall back to Flatpak path
+    return "/app/LiveCaptions/models/aprilv0_en-us.april";
+}
+
+#define GET_MODEL_PATH() get_model_path_impl()

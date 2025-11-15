@@ -2,13 +2,42 @@
 
 ![Screenshot of the application](https://github.com/abb128/LiveCaptions/blob/main/screenshot.png?raw=true)
 
-Live Captions is an application that provides live captioning for the Linux desktop.
+Live Captions is an application that provides live captioning for the Linux and macOS desktop.
 
 <p align="center">
     <a href='https://flathub.org/apps/details/net.sapples.LiveCaptions'>
         <img width='240' alt='Download on Flathub' src='https://flathub.org/assets/badges/flathub-badge-en.png'/>
     </a>
 </p>
+
+## macOS Installation
+
+For macOS users, download the DMG installer from the releases page.
+
+### Desktop Audio Capture Setup (Required for system audio)
+
+To capture desktop/system audio on macOS, you need to install **BlackHole** audio driver:
+
+1. **Install BlackHole**:
+   ```bash
+   brew install blackhole-2ch
+   ```
+   Or download directly from [https://github.com/ExistentialAudio/BlackHole](https://github.com/ExistentialAudio/BlackHole)
+
+2. **Create Multi-Output Device**:
+   - Open **Audio MIDI Setup** (in `/Applications/Utilities/`)
+   - Click the **+** button at bottom left
+   - Select **Create Multi-Output Device**
+   - Check both your **Headphones/Speakers** and **BlackHole 2ch**
+   - Right-click the Multi-Output Device and select **"Use This Device For Sound Output"**
+
+3. **Set System Output**:
+   - Go to **System Settings → Sound**
+   - Set output to the **Multi-Output Device** you created
+
+Now when you toggle **Desktop Audio** mode in Live Captions, it will capture your system audio.
+
+**Note**: Microphone mode works without any additional setup.
 
 Join the [Discord Chat](https://discord.gg/QWaJHxWjUM) if you're interested in keeping in touch.
 

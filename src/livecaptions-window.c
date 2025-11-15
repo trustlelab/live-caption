@@ -103,10 +103,16 @@ static void update_window_transparency(LiveCaptionsWindow *self) {
         gtk_widget_add_css_class(GTK_WIDGET(self), "transparent-mode");
 
         int transparency = (int)((1.0 - g_settings_get_double(self->settings, "window-transparency")) * 255.0);
+        
+        // Ensure transparency value is valid (0-255)
+        if(transparency < 0) transparency = 0;
+        if(transparency > 255) transparency = 255;
 
         char css_data[256];
-        snprintf(css_data, 256, ".transparent-mode {\nbackground-color: #000000%02X;\n}", transparency);
-        gtk_css_provider_load_from_data(self->css_provider, css_data, -1);
+        snprintf(css_data, sizeof(css_data), ".transparent-mode {\n  background-color: #000000%02X;\n}", transparency);
+        
+        // Load CSS (GTK4 function doesn't return error, just logs warnings)
+        gtk_css_provider_load_from_string(self->css_provider, css_data);
     }else{
         gtk_widget_remove_css_class(GTK_WIDGET(self), "transparent-mode");
     }
@@ -193,8 +199,15 @@ static void livecaptions_window_init(LiveCaptionsWindow *self) {
     self->settings = g_settings_new("net.sapples.LiveCaptions");
 
     self->css_provider = gtk_css_provider_new();
-    GtkStyleContext *context = gtk_widget_get_style_context(GTK_WIDGET(self));
-    gtk_style_context_add_provider(context, GTK_STYLE_PROVIDER(self->css_provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    
+    // Add CSS provider to the display (global) instead of just this widget's context
+    // This prevents GTK CSS resolution issues on macOS
+    GdkDisplay *display = gdk_display_get_default();
+    if(display) {
+        gtk_style_context_add_provider_for_display(display,
+                                                    GTK_STYLE_PROVIDER(self->css_provider),
+                                                    GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    }
 
     g_signal_connect(self->settings, "changed", G_CALLBACK(on_settings_change), self);
     

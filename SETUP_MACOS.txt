@@ -1,0 +1,57 @@
+Live Captions - macOS Setup Guide
+===================================
+
+Thank you for installing Live Captions!
+
+MICROPHONE MODE
+---------------
+Microphone mode works immediately - just toggle the microphone button
+and start speaking. No additional setup required.
+
+
+DESKTOP AUDIO MODE (Capturing System Sound)
+--------------------------------------------
+To capture desktop/system audio (e.g., from video calls, YouTube, etc.),
+you need to install BlackHole audio driver:
+
+1. INSTALL BLACKHOLE:
+   Open Terminal and run:
+   
+   brew install blackhole-2ch
+   
+   Or download from: https://github.com/ExistentialAudio/BlackHole
+
+2. CREATE MULTI-OUTPUT DEVICE:
+   a. Open "Audio MIDI Setup" (in /Applications/Utilities/)
+   b. Click the "+" button at bottom left
+   c. Select "Create Multi-Output Device"
+   d. Check BOTH:
+      ☑ Your Headphones/Speakers
+      ☑ BlackHole 2ch
+   e. Right-click the Multi-Output Device
+   f. Select "Use This Device For Sound Output"
+
+3. SET SYSTEM OUTPUT:
+   a. Go to System Settings → Sound
+   b. Set Output to "Multi-Output Device"
+
+That's it! Now toggle Desktop Audio mode in Live Captions to capture
+your system audio.
+
+
+TROUBLESHOOTING
+---------------
+If Desktop Audio mode doesn't work:
+- Make sure BlackHole is installed (check Audio MIDI Setup)
+- Verify Multi-Output Device is set as system output
+- Restart Live Captions after changing audio settings
+
+If you see no captions:
+- Check that your microphone/audio is working
+- The app requires a modern CPU for real-time transcription
+- Audio is processed locally - nothing is sent to the cloud
+
+
+SUPPORT
+-------
+GitHub: https://github.com/trustlelab/LiveCaptions

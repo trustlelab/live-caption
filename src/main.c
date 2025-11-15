@@ -25,6 +25,12 @@
 #include <adwaita.h>
 #include <april_api.h>
 
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#include <libgen.h>
+#include <limits.h>
+#endif
+
 #include "livecaptions-config.h"
 #include "livecaptions-application.h"
 #include "audiocap.h"
@@ -41,6 +47,18 @@ int main (int argc, char *argv[]) {
                     "Linked with libpipewire %s\n",
                         pw_get_headers_version(),
                         pw_get_library_version());
+#endif
+
+    // Set GSettings schema directory for macOS bundle
+#ifdef __APPLE__
+    char exe_path[PATH_MAX];
+    uint32_t size = sizeof(exe_path);
+    if (_NSGetExecutablePath(exe_path, &size) == 0) {
+        char *bundle_path = dirname(dirname(dirname(exe_path))); // Go up from MacOS to Contents to app root
+        char schema_dir[PATH_MAX];
+        snprintf(schema_dir, sizeof(schema_dir), "%s/Contents/Resources/share/glib-2.0/schemas", bundle_path);
+        g_setenv("GSETTINGS_SCHEMA_DIR", schema_dir, TRUE);
+    }
 #endif
 
     GSettings *settings = g_settings_new("net.sapples.LiveCaptions");
